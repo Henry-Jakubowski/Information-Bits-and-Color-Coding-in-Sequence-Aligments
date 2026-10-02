@@ -1,0 +1,536 @@
+<title>Conservation Threshold</title>
+<meta name="color-scheme" content="light dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;0,6..72,700;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ----------------------------------------------------------------
+   DESIGN PLAN
+   Layout: single scrolling column — alignment "stage" up top (the
+   thing being explained), controls below it, a scoring chart, then
+   a collapsible math appendix. Utilitarian teaching-tool treatment:
+   calm, legible, built for a professor to project in class.
+   Color:  --ink/--paper  = text/background
+           --accent       = amber, UI chrome + current-N marker
+           --red/--blue   = the two *semantic* alignment colors
+           --line/--panel = hairlines, card fill
+   Type:   Newsreader (display, headings) · IBM Plex Sans (UI, body)
+           · IBM Plex Mono (letters, numbers, anything tabular)
+------------------------------------------------------------------- */
+:root{
+  --paper:#f7f3ea; --paper-2:#efe9db; --ink:#241f16; --ink-soft:#5b5445; --ink-faint:#8c8470;
+  --line:#ddd3bc; --panel:#fffdf8;
+  --accent:#9a6a1f; --accent-ink:#5c3f10; --accent-soft:#eadcc0;
+  --red:#b4332a; --red-soft:#f3dcd8; --red-ink:#7a211a;
+  --blue:#2a5fb4; --blue-soft:#dbe6f6; --blue-ink:#1c3f78;
+  --grey-chip:#c9c0a8; --grey-chip-ink:#6d6550;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#1b170f; --paper-2:#23200c; --paper-2:#242019; --ink:#f1ead9; --ink-soft:#c9bfa6; --ink-faint:#8e856e;
+    --line:#3b3426; --panel:#242016;
+    --accent:#d9a84c; --accent-ink:#f4d998; --accent-soft:#3a2f16;
+    --red:#e07065; --red-soft:#3a2119; --red-ink:#f2b3ab;
+    --blue:#7fa8ec; --blue-soft:#182236; --blue-ink:#b8cdf2;
+    --grey-chip:#4a4332; --grey-chip-ink:#b7ad90;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#1b170f; --paper-2:#242019; --ink:#f1ead9; --ink-soft:#c9bfa6; --ink-faint:#8e856e;
+  --line:#3b3426; --panel:#242016;
+  --accent:#d9a84c; --accent-ink:#f4d998; --accent-soft:#3a2f16;
+  --red:#e07065; --red-soft:#3a2119; --red-ink:#f2b3ab;
+  --blue:#7fa8ec; --blue-soft:#182236; --blue-ink:#b8cdf2;
+  --grey-chip:#4a4332; --grey-chip-ink:#b7ad90;
+  color-scheme: dark;
+}
+
+*{box-sizing:border-box;}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  padding-inline:20px; padding-block:28px 60px;
+  display:flex; justify-content:center;
+}
+.page{width:100%; max-width:760px; display:flex; flex-direction:column; gap:26px;}
+
+h1,h2,h3{font-family:'Newsreader',Georgia,serif; font-weight:600; text-wrap:balance; margin:0;}
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600;
+  letter-spacing:.09em; text-transform:uppercase; color:var(--accent-ink); margin:0 0 6px;
+}
+h1{font-size:clamp(26px,4.4vw,34px); line-height:1.15;}
+.subtitle{color:var(--ink-soft); font-size:15.5px; line-height:1.55; max-width:62ch; margin-top:10px;}
+.subtitle b{color:var(--ink); font-weight:600;}
+
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:22px clamp(16px,4vw,26px);
+}
+
+/* ---- stage: the alignment column itself ---- */
+.stage-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:16px;}
+.stage-head h2{font-size:18px;}
+.status{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:999px; white-space:nowrap;
+  border:1px solid var(--line); color:var(--ink-faint); background:var(--paper-2);
+  transition:background .25s ease, color .25s ease, border-color .25s ease;
+}
+.status .dot{width:7px; height:7px; border-radius:50%; background:var(--ink-faint); transition:background .25s ease;}
+.status.flagged{background:var(--blue-soft); color:var(--blue-ink); border-color:transparent;}
+.status.flagged .dot{background:var(--blue);}
+
+.column-rail{min-width:0; overflow-x:auto; padding-bottom:6px; margin:0 -4px;}
+.chips{display:flex; gap:7px; padding:4px; min-width:max-content;}
+.chip{
+  width:38px; height:38px; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:15px;
+  background:var(--grey-chip); color:var(--grey-chip-ink);
+  border:1px solid transparent;
+  transition:background .3s ease, color .3s ease, transform .2s ease;
+}
+.chip.in{animation:pop .3s ease;}
+.chip.common.flagged{background:var(--red-soft); color:var(--red-ink); border-color:color-mix(in srgb, var(--red) 35%, transparent);}
+.chip.rare.flagged{background:var(--blue-soft); color:var(--blue-ink); border-color:color-mix(in srgb, var(--blue) 35%, transparent); transform:scale(1.08);}
+@keyframes pop{ from{transform:scale(.6); opacity:0;} to{transform:scale(1); opacity:1;} }
+@media (prefers-reduced-motion:reduce){ .chip{transition:none;} .chip.in{animation:none;} }
+
+.legend{display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; font-size:13px; color:var(--ink-soft);}
+.legend span{display:inline-flex; align-items:center; gap:7px;}
+.swatch{width:13px; height:13px; border-radius:4px; display:inline-block;}
+.swatch.common{background:var(--red);} .swatch.rare{background:var(--blue);} .swatch.neutral{background:var(--grey-chip);}
+
+/* ---- controls ---- */
+.controls{display:grid; grid-template-columns:1fr 1fr; gap:18px 22px;}
+@media (max-width:520px){ .controls{grid-template-columns:1fr;} }
+.field{display:flex; flex-direction:column; gap:7px; min-width:0;}
+.field.wide{grid-column:1 / -1;}
+.field-label{display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:13px; font-weight:600;}
+.field-label .val{font-family:'IBM Plex Mono',monospace; color:var(--accent-ink); font-variant-numeric:tabular-nums;}
+input[type="range"]{
+  -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:999px;
+  background:var(--line); outline:none; margin:4px 0;
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none; width:18px; height:18px; border-radius:50%;
+  background:var(--accent); border:3px solid var(--panel); box-shadow:0 0 0 1px var(--line); cursor:pointer;
+}
+input[type="range"]::-moz-range-thumb{
+  width:18px; height:18px; border-radius:50%; background:var(--accent); border:3px solid var(--panel);
+  box-shadow:0 0 0 1px var(--line); cursor:pointer;
+}
+select{
+  font:inherit; font-size:14px; color:var(--ink); background:var(--paper-2);
+  border:1px solid var(--line); border-radius:9px; padding:9px 12px; cursor:pointer;
+}
+.hint{font-size:12.5px; color:var(--ink-faint); line-height:1.5;}
+
+.row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+button{
+  font:inherit; font-size:13.5px; font-weight:600; cursor:pointer;
+  border-radius:9px; padding:9px 16px; border:1px solid var(--line);
+  background:var(--paper-2); color:var(--ink);
+  transition:background .15s ease, border-color .15s ease, opacity .15s ease;
+}
+button:hover{border-color:var(--accent);}
+button.primary{background:var(--accent); color:var(--panel); border-color:var(--accent);}
+button.primary:hover{opacity:.9;}
+button:disabled{opacity:.5; cursor:default;}
+
+/* ---- stat strip ---- */
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:18px;}
+@media (max-width:560px){ .stats{grid-template-columns:repeat(2,1fr);} }
+.stat{min-width:0;}
+.stat .k{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-faint); font-weight:600;}
+.stat .v{font-family:'IBM Plex Mono',monospace; font-size:18px; font-weight:600; margin-top:3px; font-variant-numeric:tabular-nums;}
+.stat .v.accent{color:var(--accent-ink);}
+
+/* ---- chart ---- */
+.chart-caption{font-size:13.5px; color:var(--ink-soft); margin-bottom:14px; line-height:1.55;}
+.chart-caption b{color:var(--ink); font-weight:600;}
+svg.chart{width:100%; height:auto; display:block;}
+.chart text{font-family:'IBM Plex Mono',monospace; fill:var(--ink-faint);}
+.axis-label{font-family:'IBM Plex Sans',sans-serif; fill:var(--ink-soft); font-size:11.5px; font-weight:600;}
+
+/* ---- math appendix ---- */
+details.math{border-top:1px solid var(--line); padding-top:4px;}
+summary{cursor:pointer; font-weight:600; font-size:14.5px; padding:10px 2px; list-style:none; display:flex; align-items:center; gap:8px;}
+summary::-webkit-details-marker{display:none;}
+summary::before{content:"+"; font-family:'IBM Plex Mono',monospace; color:var(--accent-ink); font-weight:700; width:14px;}
+details[open] summary::before{content:"–";}
+.math-body{padding:6px 2px 4px; display:flex; flex-direction:column; gap:16px;}
+.formula{
+  font-family:'IBM Plex Mono',monospace; font-size:14.5px; background:var(--paper-2);
+  border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow-x:auto;
+  line-height:1.7;
+}
+.formula .worked{color:var(--accent-ink);}
+p{line-height:1.6; font-size:14.5px; color:var(--ink-soft); margin:0;}
+p b{color:var(--ink); font-weight:600;}
+.note{
+  font-size:13px; background:var(--accent-soft); border-radius:10px; padding:12px 14px;
+  color:var(--ink); line-height:1.55;
+}
+table.freq{border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:13px; width:100%;}
+table.freq th,table.freq td{text-align:left; padding:6px 10px; border-bottom:1px solid var(--line);}
+table.freq th{color:var(--ink-faint); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em;}
+
+footer{font-size:12.5px; color:var(--ink-faint); text-align:center; line-height:1.6;}
+</style>
+
+<div class="page">
+
+  <div>
+    <p class="eyebrow">Myoglobin alignment series &middot; interactive figure</p>
+    <h1>When does a rare substitution stand out?</h1>
+    <p class="subtitle">
+      One column of an alignment: most sequences carry the same common amino acid, one or a few carry something rare.
+      A viewer that colors by <b>conservation</b> only marks the rare one off once the column's information content clears
+      a threshold. Drag <b>N</b> and watch it happen.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="stage-head">
+      <h2>The alignment column</h2>
+      <div class="status" id="statusBadge"><span class="dot"></span><span id="statusText">—</span></div>
+    </div>
+    <div class="column-rail"><div class="chips" id="chips"></div></div>
+    <div class="legend">
+      <span><i class="swatch neutral"></i>not yet distinguished</span>
+      <span><i class="swatch common"></i>common residue, flagged</span>
+      <span><i class="swatch rare"></i>rare residue, flagged</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:17px; margin-bottom:18px;">Controls</h2>
+    <div class="controls">
+      <div class="field wide">
+        <label class="field-label" for="pairSelect">Amino acid pair <span class="val" id="pairHint"></span></label>
+        <select id="pairSelect"></select>
+        <p class="hint">Picked for contrast: how common the majority residue is versus how rare the substitution is sets how fast the signal builds.</p>
+      </div>
+      <div class="field">
+        <label class="field-label" for="nSlider">Aligned sequences, N <span class="val" id="nVal"></span></label>
+        <input type="range" id="nSlider" min="2" max="18" step="1">
+      </div>
+      <div class="field">
+        <label class="field-label" for="kSlider">Different residues, k <span class="val" id="kVal"></span></label>
+        <input type="range" id="kSlider" min="1" max="5" step="1">
+      </div>
+      <div class="field wide">
+        <label class="field-label" for="tSlider">Conservation threshold, T <span class="val" id="tVal"></span></label>
+        <input type="range" id="tSlider" min="2" max="70" step="1">
+        <p class="hint">The column gets colored only once its information content I meets or passes this many bits.</p>
+      </div>
+    </div>
+    <div class="row" style="margin-top:18px;">
+      <button class="primary" id="playBtn">▶ Play: grow N from 2</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Common residue</div><div class="v" id="statCommon">—</div></div>
+      <div class="stat"><div class="k">Rare residue</div><div class="v" id="statRare">—</div></div>
+      <div class="stat"><div class="k">Column information, I</div><div class="v accent" id="statI">—</div></div>
+      <div class="stat"><div class="k">Threshold, T</div><div class="v" id="statT">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:17px; margin-bottom:6px;">I versus N</h2>
+    <p class="chart-caption" id="chartCaption">—</p>
+    <svg class="chart" id="chartSvg" viewBox="0 0 680 260" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <div class="card">
+    <details class="math" id="mathDetails">
+      <summary>The math behind the threshold</summary>
+      <div class="math-body">
+        <p>
+          Treat each sequence's residue at this column as an independent draw from the real amino acid background
+          (the same BLOSUM62-associated frequencies used throughout this chapter). The <b>information content of the
+          whole column</b> is how surprising it would be, by pure chance, to see exactly this mix of <b>N&minus;k</b>
+          common residues and <b>k</b> rare ones:
+        </p>
+        <div class="formula" id="formulaBlock">—</div>
+        <p>
+          Because each additional common-residue sequence adds a fixed number of bits, I climbs steadily as N grows
+          while k stays fixed &mdash; it crosses any given threshold sooner for a rarer substitution and later for a
+          common one. That's the whole mechanism: more sequences agreeing on the same residue makes it statistically
+          less plausible that the one outlier is just noise.
+        </p>
+        <div class="note">
+          This is a different question from the <b>column-composition</b> score used earlier for "Position 35"
+          (S/G/G/S), which compares observed <i>proportions</i> to background frequencies and barely moves as N
+          grows with a fixed minority share. Here we're asking how surprising the <i>specific sequence of outcomes</i>
+          is &mdash; the same idea as the ordered S&ndash;G&ndash;G&ndash;S probability, just extended to a column
+          with a majority and a minority residue instead of four distinct letters.
+        </div>
+        <table class="freq">
+          <thead><tr><th>Residue</th><th>Background freq., q</th><th>Bits if conserved, &minus;log&#8322;q</th></tr></thead>
+          <tbody id="freqTable"></tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+
+  <footer>Background frequencies are the BLOSUM62-associated single-residue averages used elsewhere in this chapter.</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var PAIRS = [
+    { label:"Leucine (common) vs. Tryptophan (rare) — sharpest contrast",
+      cLetter:"L", cName:"Leucine",   cq:0.099,
+      rLetter:"W", rName:"Tryptophan", rq:0.013 },
+    { label:"Glycine (common) vs. Cysteine (rare) — moderate contrast",
+      cLetter:"G", cName:"Glycine",   cq:0.074,
+      rLetter:"C", rName:"Cysteine", rq:0.025 },
+    { label:"Serine (common) vs. Histidine (rare) — gentle contrast",
+      cLetter:"S", cName:"Serine",    cq:0.057,
+      rLetter:"H", rName:"Histidine", rq:0.026 }
+  ];
+
+  var state = { pair:0, N:4, k:1, T:20 };
+
+  function bitsFor(q){ return -Math.log2(q); }
+  function colInfo(N,k,cq,rq){ return (N-k)*bitsFor(cq) + k*bitsFor(rq); }
+
+  // smallest integer N (>=k+1) at which I(N,k) >= T, for the current pair/k
+  function crossingN(k,T,cq,rq){
+    var bc = bitsFor(cq), br = bitsFor(rq);
+    var raw = (T - k*br)/bc + k;
+    var n = Math.ceil(raw);
+    if (n < k+1) n = k+1;
+    return n;
+  }
+
+  // ---- element refs ----
+  var els = {
+    chips: document.getElementById('chips'),
+    statusBadge: document.getElementById('statusBadge'),
+    statusText: document.getElementById('statusText'),
+    pairSelect: document.getElementById('pairSelect'),
+    pairHint: document.getElementById('pairHint'),
+    nSlider: document.getElementById('nSlider'),
+    kSlider: document.getElementById('kSlider'),
+    tSlider: document.getElementById('tSlider'),
+    nVal: document.getElementById('nVal'),
+    kVal: document.getElementById('kVal'),
+    tVal: document.getElementById('tVal'),
+    statCommon: document.getElementById('statCommon'),
+    statRare: document.getElementById('statRare'),
+    statI: document.getElementById('statI'),
+    statT: document.getElementById('statT'),
+    chartCaption: document.getElementById('chartCaption'),
+    chartSvg: document.getElementById('chartSvg'),
+    formulaBlock: document.getElementById('formulaBlock'),
+    freqTable: document.getElementById('freqTable'),
+    playBtn: document.getElementById('playBtn'),
+    resetBtn: document.getElementById('resetBtn')
+  };
+
+  // build pair selector
+  PAIRS.forEach(function(p, i){
+    var o = document.createElement('option');
+    o.value = i; o.textContent = p.label;
+    els.pairSelect.appendChild(o);
+  });
+
+  // evenly spread the k "different" chip positions among N so they don't just clump at the end
+  function rarePositions(N, k){
+    var set = new Set();
+    for (var i=0;i<k;i++){
+      var pos = Math.round((i+1) * N/(k+1)) - 1;
+      pos = Math.max(0, Math.min(N-1, pos));
+      while(set.has(pos)) pos = (pos+1) % N;
+      set.add(pos);
+    }
+    return set;
+  }
+
+  function fmt(n, d){ return n.toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d}); }
+
+  function render(skipChipAnim){
+    var pair = PAIRS[state.pair];
+    var N = state.N, k = Math.min(state.k, N-1);
+    if (k !== state.k) { state.k = k; els.kSlider.value = k; }
+    var I = colInfo(N, k, pair.cq, pair.rq);
+    var flagged = I >= state.T;
+    var rarePos = rarePositions(N, k);
+
+    // chips
+    els.chips.innerHTML = '';
+    for (var i=0;i<N;i++){
+      var isRare = rarePos.has(i);
+      var div = document.createElement('div');
+      div.className = 'chip ' + (isRare ? 'rare' : 'common') + (flagged ? ' flagged' : '') + (!skipChipAnim ? ' in' : '');
+      div.textContent = isRare ? pair.rLetter : pair.cLetter;
+      div.title = 'Sequence ' + (i+1) + ': ' + (isRare ? pair.rName : pair.cName);
+      els.chips.appendChild(div);
+    }
+
+    // status
+    els.statusBadge.classList.toggle('flagged', flagged);
+    els.statusText.textContent = flagged
+      ? 'flagged — stands out'
+      : 'not yet distinguished';
+
+    // controls readouts
+    els.nVal.textContent = N;
+    els.kVal.textContent = k;
+    els.tVal.textContent = state.T + ' bits';
+    els.pairHint.textContent = pair.cLetter + ' vs ' + pair.rLetter;
+    els.kSlider.max = Math.max(1, Math.min(5, N-1));
+
+    // stat strip
+    els.statCommon.textContent = pair.cName + ' (' + (N-k) + '×)';
+    els.statRare.textContent = pair.rName + ' (' + k + '×)';
+    els.statI.textContent = fmt(I,2) + ' bits';
+    els.statT.textContent = state.T + ' bits';
+
+    // formula block
+    var bc = bitsFor(pair.cq), br = bitsFor(pair.rq);
+    els.formulaBlock.innerHTML =
+      'I(N,k) = (N−k)·(−log₂ q<sub>common</sub>) + k·(−log₂ q<sub>rare</sub>)<br>' +
+      'I(' + N + ',' + k + ') = (' + N + '−' + k + ')·(−log₂ ' + pair.cq + ') + ' + k + '·(−log₂ ' + pair.rq + ')<br>' +
+      'I(' + N + ',' + k + ') = ' + (N-k) + '×' + fmt(bc,3) + ' + ' + k + '×' + fmt(br,3) +
+      ' = <span class="worked">' + fmt(I,2) + ' bits</span>';
+
+    // frequency table
+    els.freqTable.innerHTML =
+      '<tr><td>' + pair.cName + ' (' + pair.cLetter + ')</td><td>' + pair.cq + '</td><td>' + fmt(bc,2) + '</td></tr>' +
+      '<tr><td>' + pair.rName + ' (' + pair.rLetter + ')</td><td>' + pair.rq + '</td><td>' + fmt(br,2) + '</td></tr>';
+
+    drawChart(pair, k, N, I, state.T);
+  }
+
+  function drawChart(pair, k, N, I, T){
+    var W=680, H=260, padL=54, padR=18, padT=16, padB=40;
+    var nMin = k+1, nMax = Math.max(k+6, state.nSliderMax || 18, N+2);
+    nMax = Math.min(nMax, 30);
+    var bc = bitsFor(pair.cq), br = bitsFor(pair.rq);
+    var iAt = function(n){ return (n-k)*bc + k*br; };
+    var iMax = Math.max(iAt(nMax), T) * 1.12;
+
+    function x(n){ return padL + (n-nMin)/(nMax-nMin) * (W-padL-padR); }
+    function y(i){ return H-padB - (i/iMax) * (H-padT-padB); }
+
+    var cross = crossingN(k,T,pair.cq,pair.rq);
+    var crossOnScreen = cross>=nMin && cross<=nMax;
+
+    var svg = '';
+    // gridlines (y)
+    var ticks = 4;
+    for (var t=0;t<=ticks;t++){
+      var iv = iMax * t/ticks;
+      svg += '<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+y(iv)+'" y2="'+y(iv)+'" stroke="var(--line)" stroke-width="1"/>';
+      svg += '<text x="'+(padL-10)+'" y="'+(y(iv)+4)+'" text-anchor="end" font-size="11">'+Math.round(iv)+'</text>';
+    }
+    // x ticks
+    var xStep = Math.max(1, Math.round((nMax-nMin)/6));
+    for (var n=nMin; n<=nMax; n+=xStep){
+      svg += '<text x="'+x(n)+'" y="'+(H-padB+20)+'" text-anchor="middle" font-size="11">'+n+'</text>';
+    }
+    svg += '<text x="'+x(nMax)+'" y="'+(H-padB+20)+'" text-anchor="middle" font-size="11">'+nMax+'</text>';
+
+    // threshold line
+    svg += '<line x1="'+padL+'" x2="'+(W-padR)+'" y1="'+y(T)+'" y2="'+y(T)+'" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="5,4"/>';
+    svg += '<text x="'+(W-padR)+'" y="'+(y(T)-7)+'" text-anchor="end" font-size="11.5" fill="var(--accent-ink)" font-weight="600">threshold, '+T+' bits</text>';
+
+    // the I(N) line (piecewise linear, k fixed)
+    var pts = [];
+    for (var nn=nMin; nn<=nMax; nn++){ pts.push(x(nn)+','+y(iAt(nn))); }
+    svg += '<polyline points="'+pts.join(' ')+'" fill="none" stroke="var(--ink-soft)" stroke-width="2"/>';
+
+    // crossing marker
+    if (crossOnScreen){
+      svg += '<line x1="'+x(cross)+'" x2="'+x(cross)+'" y1="'+padT+'" y2="'+(H-padB)+'" stroke="var(--blue)" stroke-width="1.2" stroke-dasharray="3,4" opacity=".6"/>';
+      svg += '<text x="'+x(cross)+'" y="'+(padT+12)+'" text-anchor="middle" font-size="11" fill="var(--blue-ink)" font-weight="600">crosses at N='+cross+'</text>';
+    }
+
+    // current N marker
+    var curX = x(N), curY = y(I);
+    svg += '<circle cx="'+curX+'" cy="'+curY+'" r="7" fill="'+(I>=T?'var(--blue)':'var(--accent)')+'" stroke="var(--panel)" stroke-width="2.5"/>';
+
+    // axis labels
+    svg += '<text class="axis-label" x="'+(padL+(W-padL-padR)/2)+'" y="'+(H-4)+'" text-anchor="middle">Aligned sequences, N</text>';
+    svg += '<text class="axis-label" x="-'+(padT+(H-padT-padB)/2)+'" y="16" text-anchor="middle" transform="rotate(-90)">Column information, I (bits)</text>';
+
+    els.chartSvg.innerHTML = svg;
+
+    els.chartCaption.innerHTML = crossOnScreen
+      ? 'With <b>k = ' + k + '</b> ' + pair.rName.toLowerCase() + (k>1?'s':'') + ' against a background of ' + pair.cName.toLowerCase() + ', this column crosses a <b>' + T + '-bit</b> threshold once <b>N reaches ' + cross + '</b> aligned sequences.'
+      : 'At this threshold, N would need to climb past ' + nMax + ' before this column gets flagged — try a lower threshold or a rarer substitution.';
+  }
+
+  // ---- animation ----
+  var playing = false, playTimer = null;
+  function stopPlay(){ playing=false; clearTimeout(playTimer); els.playBtn.textContent='▶ Play: grow N from 2'; }
+  function play(){
+    if (playing){ stopPlay(); return; }
+    playing = true;
+    els.playBtn.textContent = '■ Stop';
+    var target = state.N;
+    var n = Number(els.nSlider.min);
+    state.nSliderMax = Number(els.nSlider.max);
+    function step(){
+      if (!playing) return;
+      state.N = n;
+      els.nSlider.value = n;
+      render(false);
+      if (n >= target){ stopPlay(); return; }
+      n++;
+      playTimer = setTimeout(step, 420);
+    }
+    step();
+  }
+
+  // ---- wiring ----
+  els.pairSelect.addEventListener('change', function(){ state.pair = Number(this.value); render(true); save(); });
+  els.nSlider.addEventListener('input', function(){ state.N = Number(this.value); render(true); save(); });
+  els.kSlider.addEventListener('input', function(){ state.k = Number(this.value); render(true); save(); });
+  els.tSlider.addEventListener('input', function(){ state.T = Number(this.value); render(true); save(); });
+  els.playBtn.addEventListener('click', play);
+  els.resetBtn.addEventListener('click', function(){
+    stopPlay();
+    state = { pair:0, N:4, k:1, T:20 };
+    syncInputs(); render(true); save();
+  });
+
+  function syncInputs(){
+    els.pairSelect.value = state.pair;
+    els.nSlider.value = state.N;
+    els.kSlider.value = state.k;
+    els.tSlider.value = state.T;
+  }
+
+  // ---- open-viewer continuity ----
+  function save(){
+    try{
+      if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(state);
+    }catch(e){}
+  }
+
+  function boot(saved){
+    if (saved && typeof saved === 'object' && 'N' in saved) state = saved;
+    syncInputs();
+    render(true);
+  }
+
+  if (window.claude && window.claude.hot && window.claude.hot.ready){
+    window.claude.hot.ready(function(data){ boot(data); });
+  } else {
+    boot(window.claude && window.claude.hot ? window.claude.hot.data : null);
+  }
+})();
+</script>
